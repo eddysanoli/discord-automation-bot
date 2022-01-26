@@ -24,7 +24,7 @@ const client = new Client({ intents: [
 let instanceStatuses = {};
 
 // Initial minecraft server status
-let minecraftServerUp = false;
+let minecraftServerUp = true;
 
 // =================================================================
 // SERVER SELECTORS
@@ -86,7 +86,7 @@ client.on("ready", function () {
     // Nubu Squad
     // - #nubs
     nubuSquad = client.guilds.cache.get("369642385866752000");
-    nubuSquad_nubs = devServer.channels.cache.get("369642385866752003");
+    nubuSquad_nubs = nubuSquad.channels.cache.get("369642385866752003");
 
     // ========================================
 
@@ -127,7 +127,7 @@ client.once("ready", () => {
 });
 
 // Event: Message
-client.on("messageCreate", msg => {
+client.on("messageCreate", async (msg) => {
 
     // Extract metadata from message
     let msgServerID = msg.guildId;
@@ -142,7 +142,21 @@ client.on("messageCreate", msg => {
     // Command (!status): 
     // Check AWS instance status if server is "Dev Server"
     if (msg.content === "!ec2-status") {
-        getEC2Status(msg, true);
+
+        // Retrieve instance statuses
+        let instanceStatuses = await getEC2Status();
+        console.log("Statuses: ", instanceStatuses);
+
+        // Base instance info text
+        let statusText = "Instance Info: \n";
+
+        // Add a new line of text for each instance
+        for (const instanceID in instanceStatuses) {
+            statusText += `${instanceID}: ${instanceStatuses[instanceID]}\n`;
+        }
+
+        // Reply to the user
+        msg.reply(statusText);
     }
 
     // Command (!start-server): 
@@ -349,34 +363,36 @@ function addIPV4(msg, ipv4, description) {
 
 
 // Function: Get the status of all EC2 instances
-function getEC2Status(msg, printStatus) {
+const getEC2Status = async () => {
+
+    // Variable to store the status of all instances
+    let instanceStatuses = {};
 
     // Retrieve instance information without previous permission check (DryRun = False)
-    ec2.describeInstances({DryRun: false}, function(err, data) {
+    await ec2.describeInstances({ DryRun: false }, (err, data) => {
+
+        // Report an error
         if (err) {
-            console.log("Retrieve Instance Info: Error", err.stack);
-        } else {
-            console.log("Retrieve Instance Info: Success");
-            
-            // Base instance info text
-            let statusText = "Instance Info: \n";
+            console.log("Retrieve Instance Info: Error\n", err.stack);
+            return null;
+        }
+        else {
 
             // Adds the info of each instance
-            data.Reservations.forEach( reservation => {
+            data.Reservations.forEach(reservation => {
                 let instanceID = reservation.Instances[0].InstanceId;
                 let status = reservation.Instances[0].State.Name;
                 instanceStatuses[instanceID] = status;
-                statusText += `${instanceID}: ${status}\n`;
             });
 
-            // Replies to the command
-            if (printStatus) {
-                msg.reply(statusText);
-            }
-
-            console.log(instanceStatuses);
+            // Logs the successful operation
+            console.log("Retrieve Instance Info: Success");
         }
-    });
+
+    }).promise();
+
+    return instanceStatuses;
+
 }
 
 // Function: Stop the minecraft server
@@ -468,6 +484,10 @@ async function startServer(msgChannel) {
         "java -Xmx3G -Xms3G -jar server-1-18.jar nogui \n"
     ];
 
+    // Get the most recent status of the instance
+    let instanceStatuses = await getEC2Status(msg, false);
+    let instanceStatus = instanceStatuses[gamingEC2ID];
+
     // EC2 parameters:
     // - InstanceIds: List with the IDs of all the EC2 instances to start
     // - Dry Run: Checks if you have the availble permissions to do this
@@ -475,10 +495,6 @@ async function startServer(msgChannel) {
         InstanceIds: [gamingEC2ID],
         DryRun: true
     };
-
-    // Get the most recent status of the instance
-    getEC2Status(msg, false);
-    let instanceStatus = instanceStatuses[gamingEC2ID];
 
     // Dont start the instance if it is already started
     if (instanceStatus === "running") {
