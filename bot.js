@@ -111,7 +111,7 @@ client.once("ready", () => {
 
     // Scheduled function: Minecraft Wednesday (Tuesday - 5 PM Guatemala / 11 PM US)
     let minecraftWednesday = new cron.CronJob('00 00 17 * * 2', () => {
-        nubuSquad_nubs.send("I'm proud to announce that today is Minecraft Wednesday my dudes! The server will be open shortly.");
+        nubuSquad_nubs.send("I'm proud to announce that today is Minecraft Wednesday my dudes! The server will be start shortly.");
         startServer();
     });
 
@@ -139,25 +139,26 @@ client.on("messageCreate", async (msg) => {
     let msgServer = client.guilds.cache.get(msgServerID);
     let msgChannel = msgServer.channels.cache.get(msgChannelID);
 
-    // Command (!status): 
+    // Command (!ec2-status): 
     // Check AWS instance status if server is "Dev Server"
     if (msg.content === "!ec2-status") {
 
         // Retrieve instance statuses
-        let instanceStatuses = await getEC2Status();
-        console.log("Statuses: ", instanceStatuses);
+        let instancesInfo = await getEC2Info();
+        console.log("Instance Info: ", instancesInfo);
 
         // Base instance info text
         let statusText = "Instance Info: \n";
 
         // Add a new line of text for each instance
-        for (const instanceID in instanceStatuses) {
-            statusText += `${instanceID}: ${instanceStatuses[instanceID]}\n`;
-        }
+        instancesInfo.forEach(instance => {
+            statusText += `${instance.name} (${instance.id}): ${instance.status}\n`;
+        });
 
         // Reply to the user
         msg.reply(statusText);
     }
+
 
     // Command (!start-server): 
     // Start the gaming server
@@ -257,6 +258,7 @@ client.on("messageCreate", async (msg) => {
     // Command (!test):
     // For testing new functionality
     if (whitelist.includes(msgUserID) && !blacklist.includes(msgUserID) && msg.content === "!test") {
+
         msg.reply(`Fuck you ${msgUsername}!`);
         console.log("Test: Success");
     }
@@ -285,30 +287,38 @@ client.on("messageCreate", async (msg) => {
 // =================================================================
 
 // Function: Change the current server level
-function changeLevelName(msg, levelName) {
+async function changeLevelName(msg, levelName) {
 
-    // Commands for changing the level name
-    const cmds = [
-        "cd minecraft/server \n",
-        `sed -i 's/level-name=.\\+$/level-name=${levelName}/g' server.properties\n`,
-        "echo Done Adding Level Name\n"
-    ];
+    // Get the most recent instance info
+    let instancesInfo = await getEC2Info();
 
-    // Get the most recent status of the instance
-    getEC2Status(msg, false);
-    let instanceStatus = instanceStatuses[gamingEC2ID];
+    // Get info from gaming instance
+    let gamingServer = {};
+    for (const instance of instancesInfo) {
+        if (instance.id === gamingEC2ID) gamingServer = instance;
+    }
 
-    // Send the commands and notify the chat
-    ec2.describeInstances({ DryRun: false }, function (err, data) {
-        if (err) console.log("Retrieve Instance Info: Error\n", err.stack);
-        else {
-            let IPV4 = data.Reservations[0].Instances[0].PublicIpAddress;
-            sendSSHCommands(cmds, IPV4, () => {
-                msg.reply(`Level Name Successfully Changed to ${levelName}`);
-            });
-        }
-    });
+    // Only send the commands if the instance is ready
+    if (gamingServer.status === "running") {
 
+        // Commands for changing the level name
+        const cmds = [
+            "cd minecraft/server \n",
+            `sed -i 's/level-name=.\\+$/level-name=${levelName}/g' server.properties\n`,
+            "echo Done Adding Level Name\n"
+        ];
+
+        // String that signals the end of the SSH tunnel
+        stopString = 'Done Adding Level Name';
+
+        sendSSHCommands(cmds, gamingServer.ipv4, stopString, () => {
+            msg.reply(`Level Name Successfully Changed to ${levelName}`);
+        });
+
+    }
+    else {
+        msg.reply("Instance is not running. Consider starting it first");
+    }
 }
 
 
@@ -362,76 +372,91 @@ function addIPV4(msg, ipv4, description) {
 }
 
 
-// Function: Get the status of all EC2 instances
-const getEC2Status = async () => {
+// Function: Get info from all EC2 instances
+const getEC2Info = async () => {
 
     // Variable to store the status of all instances
-    let instanceStatuses = {};
+    let instancesInfo = [];
 
     // Retrieve instance information without previous permission check (DryRun = False)
-    await ec2.describeInstances({ DryRun: false }, (err, data) => {
-
-        // Report an error
+    const promise = await ec2.describeInstances({ DryRun: false }, (err, data) => {
         if (err) {
             console.log("Retrieve Instance Info: Error\n", err.stack);
             return null;
         }
         else {
-
-            // Adds the info of each instance
+            // Adds the info of each instance to "instanceInfo"
             data.Reservations.forEach(reservation => {
+                let name = reservation.Instances[0].Tags[0].Value;
                 let instanceID = reservation.Instances[0].InstanceId;
                 let status = reservation.Instances[0].State.Name;
-                instanceStatuses[instanceID] = status;
+                let ipv4 = reservation.Instances[0].PublicIpAddress;
+                let ipv6 = reservation.Instances[0].Ipv6Address;
+
+                instancesInfo.push({
+                    id: instanceID,
+                    name: name,
+                    status: status,
+                    ipv4: ipv4,
+                    ipv6: ipv6
+                });
             });
 
-            // Logs the successful operation
             console.log("Retrieve Instance Info: Success");
         }
 
     }).promise();
 
-    return instanceStatuses;
-
+    return instancesInfo;
 }
 
 // Function: Stop the minecraft server
-function stopServer(msg) {
+async function stopServer(msg) {
 
-    // Commands for stopping the server
-    const stopCmds = [
-        "cd minecraft/server \n",
-        "screen -D -RR mc_server \n",
-        "/stop\n"
-    ];
+    // Get the most recent instance info
+    let instancesInfo = await getEC2Info();
 
-    // EC2 parameters:
-    // - InstanceIds: List with the IDs of all the EC2 instances to start
-    // - Dry Run: Checks if you have the availble permissions to do this
-    let params = {
-        InstanceIds: [gamingEC2ID],
-        DryRun: false
-    };
+    // Get info from gaming instance
+    let gamingServer = {};
+    for (const instance of instancesInfo) {
+        if (instance.id === gamingEC2ID) gamingServer = instance;
+    }
 
-    // Only stop the server if its running
-    if (minecraftServerUp) {
+    // Gaming server is "running"
+    if (gamingServer.status === "running") {
 
-        // Extract the IPV4 and IPV6 of the instance
-        ec2.describeInstances(params, function (err, data) {
-            if (err) {
-                console.log("Retrieve Instance Info: Error\n", err.stack);
-            } else {
-                // Execute commands on the instance
-                let IPV4 = data.Reservations[0].Instances[0].PublicIpAddress;
-                sendSSHCommands(stopCmds, IPV4, () => {
-                    msg.reply("Minecraft Server Successfully Stopped");
-                    minecraftServerUp = false;
-                });
-            }
-        });
+        // EC2 parameters:
+        // - InstanceIds: List with the IDs of all the EC2 instances to start
+        // - Dry Run: Checks if you have the availble permissions to do this
+        let params = {
+            InstanceIds: [gamingEC2ID],
+            DryRun: false
+        };
+
+        // Only stop the server if its up
+        if (minecraftServerUp) {
+
+            // Commands for stopping the server
+            const stopCmds = [
+                "cd minecraft/server \n",
+                "screen -D -RR mc_server \n",
+                "/stop\n"
+            ];
+
+            // Check for this on stdout in order to signal the SSH tunnel to stop
+            stopString = 'Saving chunks for level';
+
+            // Send the commands through SSH
+            sendSSHCommands(stopCmds, gamingServer.ipv4, stopString, () => {
+                msg.reply("Minecraft Server Successfully Stopped");
+                minecraftServerUp = false;
+            });
+
+        }
+        else msg.reply("Server is Not Running.");
     }
     else {
-        msg.reply("Server is Not Running.");
+        msg.reply("EC2 instance is stopped. Minecraft server is down as well.")
     }
 }
 
@@ -447,142 +472,142 @@ async function stopEC2Instance(msg) {
         DryRun: false
     };
 
-    // Only stop the instance if the minecraft server is not running
-    if (!minecraftServerUp) {
+    // Get the most recent instance info
+    let instancesInfo = await getEC2Info();
 
-        // Stop the EC2 instance
-        ec2.stopInstances(params, function (err, data) {
-            if (err) {
-                console.log(err, err.stack);
-            } else {
-                msg.reply("EC2 Instance Successfully Stopped");
-            }
-        });
-    }
-    else {
-        msg.reply("Minecraft server is still running. Stop it before turning off the instance.");
+    // Get status from gaming instance
+    let gamingServer = {};
+    for (const instance of instancesInfo) {
+        if (instance.id === gamingEC2ID) gamingServer = instance;
     }
 
+    // Gaming server is "running"
+    if (gamingServer.status === "running") {
+
+        // Stop the instance if the minecraft server is not running
+        if (!minecraftServerUp) {
+
+            // Stop the EC2 instance
+            ec2.stopInstances(params, function (err, data) {
+                if (err) console.log(err, err.stack);
+                else msg.reply("EC2 Instance Successfully Stopped");
+            });
+        }
+        else msg.reply("Minecraft server is still running. Stop it before turning off the instance.");
+
+    }
+
+    // Gaming server is "stopped"
+    else if (gamingServer.status === "stopped") {
+        msg.reply("Gaming server is already stopped");
+    }
 }
 
 
 // Function: Start the EC2 server
 async function startServer(msgChannel) {
 
-    // Create first message
+    // First discord message
     const msg = await msgChannel.send("Starting Server: ------- ");
 
-    // Starting shell commands to send through SSH:
-    // - Kill all screens
-    // - Move to the server folder
-    // - Start a new screen called "ms_server"
-    // - Start the jar file for the server
-    const startCmds = [
-        "killall screen \n",
-        "cd minecraft/server \n",
-        "screen -S mc_server \n",
-        "java -Xmx3G -Xms3G -jar server-1-18.jar nogui \n"
-    ];
+    // Get the most recent instance info
+    let instancesInfo = await getEC2Info();
 
-    // Get the most recent status of the instance
-    let instanceStatuses = await getEC2Status(msg, false);
-    let instanceStatus = instanceStatuses[gamingEC2ID];
-
-    // EC2 parameters:
-    // - InstanceIds: List with the IDs of all the EC2 instances to start
-    // - Dry Run: Checks if you have the availble permissions to do this
-    let params = {
-        InstanceIds: [gamingEC2ID],
-        DryRun: true
-    };
-
-    // Dont start the instance if it is already started
-    if (instanceStatus === "running") {
-
-        // Extract the IPV4 and IPV6 of the instance
-        ec2.describeInstances({ DryRun: false }, function (err, data) {
-            if (err) {
-                console.log("Retrieve Instance Info: Error\n", err.stack);
-            } else {
-                let IPV4 = data.Reservations[0].Instances[0].PublicIpAddress;
-                let IPV6 = data.Reservations[0].Instances[0].Ipv6Address;
-                console.log("Retrieve Instance Info: Success");
-                msg.edit("Starting Server: Instance was already up")
-
-                // Execute commands on the instance, then, signal
-                // that the server is ready in Discord
-                sendSSHCommands(startCmds, IPV4, () => {
-                    msg.edit(`Starting Server: Done!\nIPV4: ${IPV4}\nIPV6 ${IPV6}`);
-                    minecraftServerUp = true;
-                });
-
-            }
-        });
+    // Get status from gaming instance
+    let gamingServer = {};
+    for (const instance of instancesInfo) {
+        if (instance.id === gamingEC2ID) gamingServer = instance;
     }
 
-    // If server is already running
-    else if (minecraftServerUp === true) {
+    // Instance is running
+    if (gamingServer.status === "running") {
 
-        // Extract the IPV4 and IPV6 of the instance
-        ec2.describeInstances(params, function (err, data) {
-            if (err) console.log("Retrieve Instance Info: Error\n", err.stack);
-            else {
-                let IPV4 = data.Reservations[0].Instances[0].PublicIpAddress;
-                let IPV6 = data.Reservations[0].Instances[0].Ipv6Address;
-                msg.edit(`Minecraft Server Already Running.\nIPV4: ${IPV4}\nIPV6 ${IPV6}`);
-            }
-        });
+        // Check if minecraft server is up
+        if (minecraftServerUp === true) {
+            msg.edit(`Starting Server: Server Already Running.\nIPV4: ${gamingServer.ipv4}\nIPV6: ${gamingServer.ipv6}`);
+        }
+        else {
+            msg.edit("Starting Server: Instance was already up. Starting server.")
+
+            // Execute commands on the instance, then, signal
+            // that the server is ready in Discord
+            sendSSHCommands(startCmds, IPV4, () => {
+                msg.edit(`Starting Server: Done!\nIPV4: ${IPV4}\nIPV6 ${IPV6}`);
+                minecraftServerUp = true;
+            });
+        }
     }
 
-    // If instance is running but the server is not
-    else {
+    // Instance is stopped
+    else if (gamingServer.status === "stopped") {
 
-        // Start the EC2 instance and retrieve its IPs
+        // EC2 parameters:
+        // - InstanceIds: List with the IDs of all the EC2 instances to start
+        // - Dry Run: Checks if you have the availble permissions to do this
+        let params = {
+            InstanceIds: [gamingEC2ID],
+            DryRun: true
+        };
+
+        // Start the EC2 instance
         ec2.startInstances(params, (err, data) => {
 
-            // Check if the error returned is a "Dry Run Operation"
-            // Start the instance if it is.
+            // Check if the error returned is due to permissions (Dry run). 
+            // Continue if this is the case
             if (err && err.code == "DryRunOperation") {
 
                 // Disable the check for permissions
                 params.DryRun = false;
 
-                // Start the instance and return errors if they exist
+                // Start the instance
                 ec2.startInstances(params, (err, data) => {
-                    if (err) { console.log("Error", err); }
+                    if (err) console.log("Error", err); 
                     else if (data) {
 
+                        // Waiting for status checks
                         console.log(`Starting Instance: ${data.StartingInstances[0].InstanceId}`);
-                        msg.edit("Starting Server: Starting EC2 Instance");
+                        msg.edit("Starting Server: Started Instance. Waiting for Status Checks.");
 
                         // Wait for the two status checks of the EC2 instance
-                        // Return errors in case they exist
-                        ec2.waitFor('instanceStatusOk', params, (err, data) => {
-                            if (err) console.log(err, err.stack); // an error occurred
+                        ec2.waitFor('instanceStatusOk', params, async (err, data) => {
+                            if (err) console.log(err, err.stack); 
                             else {
 
+                                // Finished status checks
                                 console.log(`Successfully Started Instance: ${data.InstanceStatuses[0].InstanceId}.`);
                                 msg.edit("Starting Server: EC2 Instance Successfully Started");
 
-                                // Disable dry run (Dont check for permissions)
-                                params.DryRun = false;
+                                // Update the instance info after startup
+                                let instancesInfo = await getEC2Info();
+                                let gamingServer = {};
+                                for (const instance of instancesInfo) {
+                                    if (instance.id === gamingEC2ID) gamingServer = instance;
+                                }
 
-                                // Extract the IPV4 and IPV6 of the instance
-                                ec2.describeInstances(params, function (err, data) {
-                                    if (err) {
-                                        console.log("Retrieve Instance Info: Error\n", err.stack);
-                                    } else {
-                                        let IPV4 = data.Reservations[0].Instances[0].PublicIpAddress;
-                                        let IPV6 = data.Reservations[0].Instances[0].Ipv6Address;
+                                // Updated instance info
+                                console.log(`Updated Instance Info: Success.`);
+                                msg.edit("Starting Server: Updated instance info. Loading server.");
 
-                                        // Execute commands on the instance, then, signal
-                                        // that the server is ready in Discord
-                                        sendSSHCommands(startCmds, IPV4, () => {
-                                            msg.edit(`Starting Server: Done!\nIPV4: ${IPV4}\nIPV6 ${IPV6}`);
-                                            minecraftServerUp = true;
-                                        });
+                                // Starting shell commands to send through SSH:
+                                // - Kill all screens
+                                // - Move to the server folder
+                                // - Start a new screen called "mc_server"
+                                // - Start the jar file for the server
+                                const startCmds = [
+                                    "killall screen \n",
+                                    "cd minecraft/server \n",
+                                    "screen -S mc_server \n",
+                                    "java -Xmx3G -Xms3G -jar server-1-18.jar nogui \n"
+                                ];
 
-                                    }
+                                // Check for this string inside the SSH console to signal the tunnel closing
+                                stopString = 'For help, type "help"';
+
+                                // Execute commands on the instance, then, signal
+                                // that the server is ready in Discord
+                                sendSSHCommands(startCmds, gamingServer.ipv4, stopString, () => {
+                                    msg.edit(`Starting Server: Done!\nIPV4: ${gamingServer.ipv4}\nIPV6 ${gamingServer.ipv6}`);
+                                    minecraftServerUp = true;
                                 });
 
                             }
@@ -592,14 +617,13 @@ async function startServer(msgChannel) {
             }
         });
     }
-
-    
 }
 
 
 // Function: Send SSH commands to instance
-function sendSSHCommands(cmds, hostIPV4, callback) {
+async function sendSSHCommands(cmds, hostIPV4, stopString, callback) {
 
+    // Import SSH2
     const { Client } = require('ssh2');
 
     // Create connection object
@@ -612,7 +636,7 @@ function sendSSHCommands(cmds, hostIPV4, callback) {
     var command = conn.on('ready', () => {
 
         // Connection successful. Opening a shell
-        console.log('Connection successful. Opening a shell');
+        console.log('SSH Connection Successful. Opening a shell');
         conn.shell((err, stream) => {
 
             // Event: Shell is closed
@@ -621,21 +645,13 @@ function sendSSHCommands(cmds, hostIPV4, callback) {
 
             // Event: Shell is streaming data
             }).on('data', (shellData) => {
+
+                // Log the shell output
                 console.log(shellData.toString());
 
-                // If shell log contains: 'For help, type "help"', the server has finished its
-                // startup process. The SSH tunnel is subsequently closed
-                if (shellData.toString().includes('For help, type "help"')) {
-                    conn.end();
-                    callback();
-                }
-
-                if (shellData.toString().includes('Saving chunks for level')) {
-                    conn.end();
-                    callback();
-                }
-
-                if (shellData.toString().includes('Done Adding Level Name')) {
+                // If shell log contains the stop string, the desired process has finished
+                // execution. The SSH tunnel is subsequently closed and the callback is called.
+                if (shellData.toString().includes(stopString)) {
                     conn.end();
                     callback();
                 }
@@ -647,14 +663,14 @@ function sendSSHCommands(cmds, hostIPV4, callback) {
 
             // Event: Shell error
             }).on('error', (e) => {
-                console.log('stream :: error\n', { e });
+                console.log('Shell Error: \n', { e });
                 rej(e);
             });
 
             // Each command in the list is passed to the shell 
-            for (let i = 0; i < cmds.length; i += 1) {
-                stream.write(`${cmds[i]}`);
-            }
+            cmds.forEach(cmd => {
+                stream.write(`${cmd}`);
+            });
         });
     });
 
@@ -667,7 +683,6 @@ function sendSSHCommands(cmds, hostIPV4, callback) {
     });
 
 }
-
 
 // =================================================================
 // DISCORD LOGIN
