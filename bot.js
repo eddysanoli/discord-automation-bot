@@ -94,8 +94,8 @@ client.once("ready", () => {
 
     // Scheduled function: Minecraft Wednesday (Tuesday - 5 PM Guatemala / 11 PM US)
     let minecraftWednesday = new cron.CronJob('00 00 17 * * 2', () => {
-        nubuSquad_nubs.send("I'm proud to announce that today is Minecraft Wednesday my dudes! The server will be start shortly.");
-        aws.startServer();
+        nubuSquad_nubs.send("I'm proud to announce that today is Minecraft Wednesday my dudes! The server will be started shortly.");
+        aws.startServer(nubuSquad_nubs);
     });
 
     // Scheduled function: Feliz Jueves (Thursday - 12 PM Guatemala / 6 PM US)
@@ -227,6 +227,9 @@ client.on("messageCreate", async (msg) => {
     // Check the status of the minecraft server
     if (msg.content === "!server-status") {
 
+        const minecraftServerUp = await aws.getServerStatus();
+        console.log(minecraftServerUp);
+
         // Reply with the status based on the value of "minecraftServerUp"
         if (minecraftServerUp){
             msg.reply(`Minecraft Server is Up 😄`);
@@ -241,7 +244,6 @@ client.on("messageCreate", async (msg) => {
     // Command (!test):
     // For testing new functionality
     if (whitelist.includes(msgUserID) && !blacklist.includes(msgUserID) && msg.content === "!test") {
-
         msg.reply(`Fuck you ${msgUsername}!`);
         console.log("Test: Success");
     }
@@ -259,7 +261,6 @@ client.on("messageCreate", async (msg) => {
         - !add-ipv6 IP: Add access to specific IPV6 address
         - !test: Test new functionality or be cursed at
         - !change-level: Change current level being loaded by the minecraft server
-        - !server-status: Is the server on?
         `);
     }
 

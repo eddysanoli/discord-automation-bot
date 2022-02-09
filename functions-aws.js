@@ -1,6 +1,11 @@
 // Dependencies
 const AWS = require('aws-sdk');
 const { readFileSync } = require('fs');
+const { Client } = require('ssh2');
+const SSH2Promise = require('ssh2-promise');
+
+// SSH Promise (SSH2 Promise Wrapper)
+// var ssh = new SSH2Promise(sshconfig);
 
 // AWS Setup
 // Set the AWS region 
@@ -15,11 +20,10 @@ const gamingEC2ID = "i-0c794562f3be7c6f8";
 // Initial minecraft server status
 let minecraftServerUp = false;
 
-// No such file or directory
-
 // =================================================================
 // FUNCTIONS
 // =================================================================
+
 
 // -----------------------------
 // Function: Change the current server level
@@ -291,8 +295,8 @@ exports.startServer = async (msgChannel) => {
 
             // Execute commands on the instance, then, signal
             // that the server is ready in Discord
-            sendSSHCommands(startCmds, IPV4, () => {
-                msg.edit(`Starting Server: Done!\nIPV4: ${IPV4}\nIPV6 ${IPV6}`);
+            sendSSHCommands(startCmds, gamingServer.ipv4, () => {
+                msg.edit(`Starting Server: Done!\nIPV4: ${gamingServer.ipv4}\nIPV6 ${gamingServer.ipv6}`);
                 minecraftServerUp = true;
                 console.log("Start Server: Success");
             });
@@ -373,9 +377,6 @@ exports.startServer = async (msgChannel) => {
 // Function: Send SSH commands to instance
 const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
 
-    // Import SSH2
-    const { Client } = require('ssh2');
-
     // Create connection object
     const conn = new Client();
 
@@ -435,3 +436,85 @@ const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
 }
 
 exports.sendSSHCommands = sendSSHCommands;
+
+
+// -----------------------------
+// Function: Retrieve the minecraft server status
+exports.getServerStatus = async () => {
+
+    // Default minecraft server status flag
+    let minecraftServerUp = false;
+
+    // Create SSH connection object
+    const conn = new Client();
+
+    // Get instance info
+    let instancesInfo = await getEC2Info();
+    let gamingServer = {};
+    for (const instance of instancesInfo) {
+        if (instance.id === gamingEC2ID) gamingServer = instance;
+    }    
+
+    // Gaming server is "running"
+    if (gamingServer.status === "running") {
+
+        // Replace "." by "-" in the host IP address
+        hostIPV4 = gamingServer.ipv4.replace(/\./g, "-");
+
+        // Create the command event
+        var command = conn.on('ready', () => {
+
+            // Connection successful. Opening a shell
+            console.log('SSH Connection Successful. Opening shell.');
+            conn.shell((err, stream) => {
+
+                // Event: Shell is closed
+                stream.on('close', (code) => {
+                    console.log('Shell Close: \n', { code });
+
+                // Event: Shell is streaming data
+                }).on('data', (shellData) => {
+
+                    console.log(shellData.toString());
+
+                    // Check if a match for a java process was found
+                    if (shellData.toString().includes("FOUND")) {
+                        minecraftServerUp = true;
+                        console.log("FOUND");
+                        conn.end();
+                    }
+                    
+                    // Check if there is no match for a java process
+                    if (shellData.toString().includes("NOT FOUND")) {
+                        minecraftServerUp = false;
+                        console.log("NOT FOUND");
+                        conn.end();
+                    }
+
+                // Event: Shell error
+                }).on('error', (e) => {
+                    console.log('Shell Error: \n', { e });
+                    rej(e);
+                });
+
+                // Write the command: Check if the java process is running
+                // - sudo ps -a: List running processes
+                // - egrep -q: Return 1 if a process with the name "java" was found
+                stream.write("if sudo ps -a | egrep -q 'java'; then echo FOUND; else echo NOT FOUND; fi");
+            });
+        });
+
+        // Send command to EC2 instance
+        command.connect({
+            host: `ec2-${hostIPV4}.us-east-2.compute.amazonaws.com`,
+            port: 22,
+            username: "ec2-user",
+            privateKey: readFileSync("C:/Users/eddysanoli/.ssh/aws-server.pem")
+        });
+
+    }
+
+    console.log("COSO");
+    return minecraftServerUp;
+
+}
