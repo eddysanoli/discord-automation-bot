@@ -5,7 +5,8 @@
         "esModuleInterop": true,
         "moduleResolution": "node",                     // Use the locally installed Node modules 
         "lib": ["es6", "dom", "es2017"],
-        "types": [ "node" ],
+        "types": [ "node", "jest" ],                    // Types that will be used in the project
+        "noEmit": false,                                // Don't emit Javascript files on compilation
         "typeRoots": [ "../node_modules/@types" ],
         "sourceMap": true,                              // Generates a map file that allows us to see the "non-minified" code when debugging
         "noUnusedParameters": true,                     // Warns when a function parameter is not used
