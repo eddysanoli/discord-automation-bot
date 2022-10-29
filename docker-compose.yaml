@@ -3,9 +3,9 @@ version: '3'
 services:
   discord-bot:
     build: ./
-    image: typescript:latest
+    image: discord-bot:latest
     container_name: discord-bot
     restart: always
     volumes:
       - ./:/usr/src                       # Mount the current directory to workdir of the container
-    
+      - /usr/src/node_modules             # Prevent the internal node_modules from being deleted when no "node_modules" folder exists in the root directory 

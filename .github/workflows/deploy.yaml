@@ -1,0 +1,57 @@
+name: Eddysanoli CD 
+
+on: 
+  push:
+    branches: [ "master" ]
+
+jobs:
+  deploy:
+    name: Deploy to Linode Server
+    runs-on: ubuntu-latest
+    steps:
+
+      # ---------------------------------------------- #
+      # Reference:
+      # https://github.com/marketplace/actions/ssh-remote-commands
+      - name: Pull newest changes from master
+        uses: appleboy/ssh-action@master 
+        with:
+          host: ${{ secrets.LINODE_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd /opt/discord_bot
+            git checkout .
+            git fetch
+            git pull origin master
+      
+      # ---------------------------------------------- #
+      # Clean the "node_modules" folder and "package-lock.json" file in order to install the
+      # newest dependencies from the "package.json" file when the container gets rebuilt in the
+      # next step. The "node_modules" deletion is not necessary (since the container will install
+      # the dependencies internally), but it's a good idea to don't have a local node_modules folder
+      # in the server.
+      - name: Clean the Local Node Modules 
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.LINODE_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd /opt/discord_bot
+            rm -rf node_modules
+            rm package-lock.json
+
+      # ---------------------------------------------- #
+      - name: Restart the Bot Container
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.LINODE_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd /opt/storage/docker
+            docker-compose stop discord-bot
+            docker-compose build discord-bot
+            docker-compose start discord-bot
+

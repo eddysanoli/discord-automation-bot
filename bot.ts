@@ -74,7 +74,7 @@ client.on("ready", function () {
     // ========================================
 
     // Welcome message
-    devServer_general.send("Hello, I'm back up baby!");
+    devServer_general.send("Hey, I'm back baby!");
 
 });
 

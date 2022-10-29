@@ -7,11 +7,11 @@ WORKDIR /usr/src
 # Copy source files
 COPY . . 
 
+# Install Typescript and ts-node (Run typescript without compiling first) 
+RUN npm install -g ts-node typescript '@types/node'
+
 # Install dependencies
 RUN npm install
 
-# Install typescript globally
-RUN npm install -g ts-node typescript '@types/node'
-
 # Build and start app
-ENTRYPOINT [ "npm", "rum", "start" ]
+ENTRYPOINT [ "npm", "run", "start" ]
