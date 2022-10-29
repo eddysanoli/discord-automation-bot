@@ -6,7 +6,7 @@ on:
 
 jobs:
   test:
-    name: Test the Website Files
+    name: Test the Bot 
     runs-on: ubuntu-latest
     steps:
 
@@ -26,7 +26,7 @@ jobs:
         run: npm install
       
       # ---------------------------------------------- #
-      - name: Test the Website
+      - name: Test the Bot
         working-directory: ./
         run: npm run test
       
