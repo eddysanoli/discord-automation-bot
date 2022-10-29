@@ -1,7 +1,7 @@
 // Dependencies
 const DotEnv = require("dotenv").config({path: `${__dirname}/.env`});
 const cron = require("cron");
-const aws = require(__dirname + "/functions-aws");
+const aws = require(__dirname + "/src/functions-aws");
 
 // Discord client instance
 const { Client, Intents } = require('discord.js');
