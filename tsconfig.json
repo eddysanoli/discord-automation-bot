@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "target": "es5",
+        "module": "ES2015",                 // Include imports/exports in the transpiled Javascript
+        "moduleResolution": "node",         // Use the locally installed Node modules 
+        "lib": ["es6", "dom", "es2017"],
+        "sourceMap": true,                  // Generates a map file that allows us to see the "non-minified" code when debugging
+        "noUnusedParameters": true,         // Warns when a function parameter is not used
+        "noImplicitReturns": true,          // Enforce always adding types to function inputs
+        "removeComments": false,            // Remove comments from the transpiled JS file
+    }
+}
