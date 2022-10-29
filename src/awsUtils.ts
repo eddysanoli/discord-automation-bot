@@ -1,4 +1,5 @@
 // Dependencies
+import { EC2Instance } from "./customTypes";
 const AWS = require('aws-sdk');
 const { readFileSync } = require('fs');
 const { Client: sshClient } = require('ssh2');
@@ -20,20 +21,18 @@ const gamingEC2ID = "i-0c794562f3be7c6f8";
 // Initial minecraft server status
 let minecraftServerUp = false;
 
-// =================================================================
-// FUNCTIONS
-// =================================================================
 
+/* ============================================ */
+/* FUNCTION: CHANGE MINECRAFT LEVEL / WORLD     */
+/* ============================================ */
 
-// -----------------------------
-// Function: Change the current server level
 exports.changeLevelName = async (msg, levelName) => {
 
     // Get the most recent instance info
     let instancesInfo = await getEC2Info();
 
     // Get info from gaming instance
-    let gamingServer = {};
+    let gamingServer: EC2Instance;
     for (const instance of instancesInfo) {
         if (instance.id === gamingEC2ID) gamingServer = instance;
     }
@@ -81,7 +80,7 @@ exports.addIPV6 = (msg, ipv6, description) => {
     };
 
     // Add the ingress rule and return an error if it exists
-    ec2.authorizeSecurityGroupIngress(params, (err, data) => {
+    ec2.authorizeSecurityGroupIngress(params, (err) => {
         if (err) console.log(err, err.stack);
         else msg.reply(`Added IPV6 ${ipv6} Successfully`);      
     });
@@ -107,19 +106,21 @@ exports.addIPV4 = (msg, ipv4, description) => {
     };
 
     // Add the ingress rule and return an error if it exists
-    ec2.authorizeSecurityGroupIngress(params, (err, data) => {
+    ec2.authorizeSecurityGroupIngress(params, (err) => {
         if (err) console.log(err, err.stack);
         else msg.reply(`Added IPV4 '${ipv4}' Successfully`);      
     });
 }
 
 
-// -----------------------------
-// Function: Get info from all EC2 instances
+/* ============================================ */
+/* FUNCTION: GET INSTANCES FROM EC2             */
+/* ============================================ */
+
 const getEC2Info = async () => {
 
     // Variable to store the status of all instances
-    let instancesInfo = [];
+    let instancesInfo: Array<EC2Instance> = [];
 
     // Retrieve instance information without previous permission check (DryRun = False)
     const promise = await ec2.describeInstances({ DryRun: false }, (err, data) => {
@@ -128,6 +129,7 @@ const getEC2Info = async () => {
             return null;
         }
         else {
+
             // Adds the info of each instance to "instanceInfo"
             data.Reservations.forEach(reservation => {
                 let name = reservation.Instances[0].Tags[0].Value;
@@ -164,7 +166,7 @@ exports.stopServer = async (msg) => {
     let instancesInfo = await getEC2Info();
 
     // Get info from gaming instance
-    let gamingServer = {};
+    let gamingServer: EC2Instance;
     for (const instance of instancesInfo) {
         if (instance.id === gamingEC2ID) gamingServer = instance;
     }
@@ -224,7 +226,7 @@ exports.stopEC2Instance = async (msg) => {
     let instancesInfo = await getEC2Info();
 
     // Get status from gaming instance
-    let gamingServer = {};
+    let gamingServer: EC2Instance;
     for (const instance of instancesInfo) {
         if (instance.id === gamingEC2ID) gamingServer = instance;
     }
@@ -236,7 +238,7 @@ exports.stopEC2Instance = async (msg) => {
         if (!minecraftServerUp) {
 
             // Stop the EC2 instance
-            ec2.stopInstances(params, function (err, data) {
+            ec2.stopInstances(params, function (err) {
                 if (err) console.log(err, err.stack);
                 else {
                     console.log("Stop Instance: Success")
@@ -278,7 +280,7 @@ exports.startServer = async (msgChannel) => {
     let instancesInfo = await getEC2Info();
 
     // Get status from gaming instance
-    let gamingServer = {};
+    let gamingServer: EC2Instance;
     for (const instance of instancesInfo) {
         if (instance.id === gamingEC2ID) gamingServer = instance;
     }
@@ -295,7 +297,7 @@ exports.startServer = async (msgChannel) => {
 
             // Execute commands on the instance, then, signal
             // that the server is ready in Discord
-            sendSSHCommands(startCmds, gamingServer.ipv4, () => {
+            sendSSHCommands(startCmds, gamingServer.ipv4, "For help, type", () => {
                 msg.edit(`Starting Server: Done!\nIPV4: ${gamingServer.ipv4}\nIPV6 ${gamingServer.ipv6}`);
                 minecraftServerUp = true;
                 console.log("Start Server: Success");
@@ -315,7 +317,7 @@ exports.startServer = async (msgChannel) => {
         };
 
         // Start the EC2 instance
-        ec2.startInstances(params, (err, data) => {
+        ec2.startInstances(params, (err) => {
 
             // Check if the error returned is due to permissions (Dry run). 
             // Continue if this is the case
@@ -344,7 +346,7 @@ exports.startServer = async (msgChannel) => {
 
                                 // Update the instance info after startup
                                 let instancesInfo = await getEC2Info();
-                                let gamingServer = {};
+                                let gamingServer: EC2Instance;
                                 for (const instance of instancesInfo) {
                                     if (instance.id === gamingEC2ID) gamingServer = instance;
                                 }
@@ -378,7 +380,7 @@ exports.startServer = async (msgChannel) => {
 const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
 
     // Create connection object
-    const conn = new Client();
+    const conn = new sshClient();
 
     // Replace "." by "-" in the host IP address
     hostIPV4 = hostIPV4.replace(/\./g, "-");
@@ -389,6 +391,8 @@ const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
         // Connection successful. Opening a shell
         console.log('SSH Connection Successful. Opening a shell');
         conn.shell((err, stream) => {
+
+            console.log(`Error: ${err}`);
 
             // Event: Shell is closed
             stream.on('close', (code) => {
@@ -415,7 +419,6 @@ const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
             // Event: Shell error
             }).on('error', (e) => {
                 console.log('Shell Error: \n', { e });
-                rej(e);
             });
 
             // Each command in the list is passed to the shell 
@@ -446,11 +449,11 @@ exports.getServerStatus = async () => {
     let minecraftServerUp = false;
 
     // Create SSH connection object
-    const conn = new Client();
+    const conn = new sshClient();
 
     // Get instance info
     let instancesInfo = await getEC2Info();
-    let gamingServer = {};
+    let gamingServer: EC2Instance;
     for (const instance of instancesInfo) {
         if (instance.id === gamingEC2ID) gamingServer = instance;
     }    
@@ -467,6 +470,8 @@ exports.getServerStatus = async () => {
             // Connection successful. Opening a shell
             console.log('SSH Connection Successful. Opening shell.');
             conn.shell((err, stream) => {
+
+                console.log(`Error: ${err}`);
 
                 // Event: Shell is closed
                 stream.on('close', (code) => {
@@ -494,7 +499,6 @@ exports.getServerStatus = async () => {
                 // Event: Shell error
                 }).on('error', (e) => {
                     console.log('Shell Error: \n', { e });
-                    rej(e);
                 });
 
                 // Write the command: Check if the java process is running
@@ -514,7 +518,6 @@ exports.getServerStatus = async () => {
 
     }
 
-    console.log("COSO");
     return minecraftServerUp;
 
 }

@@ -1,7 +1,8 @@
 {
     "compilerOptions": {
         "target": "es5",
-        "module": "ES2015",                 // Include imports/exports in the transpiled Javascript
+        "module": "CommonJS",                 // Include imports/exports in the transpiled Javascript
+        "esModuleInterop": true,
         "moduleResolution": "node",         // Use the locally installed Node modules 
         "lib": ["es6", "dom", "es2017"],
         "sourceMap": true,                  // Generates a map file that allows us to see the "non-minified" code when debugging

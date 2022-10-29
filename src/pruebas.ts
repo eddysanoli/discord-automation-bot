@@ -1,12 +1,12 @@
 // Load the AWS SDK for Node.js
-var AWS = require('aws-sdk');
+var { AWS: testAWS } = require('aws-sdk');
 
 
 // Set the AWS region 
-AWS.config.update({region: 'us-east-2'});
+testAWS.config.update({region: 'us-east-2'});
 
 // Create EC2 service object
-var ec2 = new AWS.EC2();
+var ec2 = new testAWS.EC2();
 
 var params = {
   GroupId: "sg-0e5ca585f6b9aff24",
