@@ -1,19 +1,25 @@
-// Dependencies
+// Node Modules 
+import { config as AWSConfig, EC2 } from "aws-sdk";
+import { readFileSync } from "fs";
+import { Client as sshClient } from "ssh2";
+// import * as SSH2Promise from "ssh2-promise";
+
+// Custom Scripts
 import { EC2Instance } from "./customTypes";
-const AWS = require('aws-sdk');
-const { readFileSync } = require('fs');
-const { Client: sshClient } = require('ssh2');
-const SSH2Promise = require('ssh2-promise');
+
+/* ============================================ */
+/* SETUP                                        */
+/* ============================================ */
 
 // SSH Promise (SSH2 Promise Wrapper)
 // var ssh = new SSH2Promise(sshconfig);
 
 // AWS Setup
 // Set the AWS region 
-AWS.config.update({region: 'us-east-2'});
+AWSConfig.update({region: 'us-east-2'});
 
 // Create EC2 service object
-var ec2 = new AWS.EC2();
+var ec2 = new EC2();
 
 // Gaming server EC2 instance ID
 const gamingEC2ID = "i-0c794562f3be7c6f8";
@@ -26,7 +32,7 @@ let minecraftServerUp = false;
 /* FUNCTION: CHANGE MINECRAFT LEVEL / WORLD     */
 /* ============================================ */
 
-exports.changeLevelName = async (msg, levelName) => {
+export const changeLevelName = async (msg, levelName) => {
 
     // Get the most recent instance info
     let instancesInfo = await getEC2Info();
@@ -63,7 +69,7 @@ exports.changeLevelName = async (msg, levelName) => {
 
 // -----------------------------
 // Function: Add IPV6 to security group ingress rules
-exports.addIPV6 = (msg, ipv6, description) => {
+export const addIPV6 = (msg, ipv6, description) => {
 
     // Parameters for the new ingress rule
     var params = {
@@ -89,7 +95,7 @@ exports.addIPV6 = (msg, ipv6, description) => {
 
 // -----------------------------
 // Function: Add IPV4 to security group ingress rules
-exports.addIPV4 = (msg, ipv4, description) => {
+export const addIPV4 = (msg, ipv4, description) => {
 
     // Parameters for the new ingress rule
     var params = {
@@ -117,7 +123,7 @@ exports.addIPV4 = (msg, ipv4, description) => {
 /* FUNCTION: GET INSTANCES FROM EC2             */
 /* ============================================ */
 
-const getEC2Info = async () => {
+export const getEC2Info = async () => {
 
     // Variable to store the status of all instances
     let instancesInfo: Array<EC2Instance> = [];
@@ -155,12 +161,10 @@ const getEC2Info = async () => {
     return instancesInfo;
 }
 
-exports.getEC2Info = getEC2Info;
-
 
 // -----------------------------
 // Function: Stop the minecraft server
-exports.stopServer = async (msg) => {
+export const stopServer = async (msg) => {
 
     // Get the most recent instance info
     let instancesInfo = await getEC2Info();
@@ -212,7 +216,7 @@ exports.stopServer = async (msg) => {
 
 // -----------------------------
 // Function: Stop the EC2 instance
-exports.stopEC2Instance = async (msg) => {
+export const stopEC2Instance = async (msg) => {
 
     // EC2 parameters:
     // - InstanceIds: List with the IDs of all the EC2 instances to start
@@ -259,7 +263,7 @@ exports.stopEC2Instance = async (msg) => {
 
 // -----------------------------
 // Function: Start the EC2 server
-exports.startServer = async (msgChannel) => {
+export const startServer = async (msgChannel) => {
 
     // First discord message
     const msg = await msgChannel.send("Starting Server: ------- ");
@@ -377,7 +381,7 @@ exports.startServer = async (msgChannel) => {
 
 // -----------------------------
 // Function: Send SSH commands to instance
-const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
+export const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
 
     // Create connection object
     const conn = new sshClient();
@@ -438,12 +442,9 @@ const sendSSHCommands = async (cmds, hostIPV4, stopString, callback) => {
 
 }
 
-exports.sendSSHCommands = sendSSHCommands;
-
-
 // -----------------------------
 // Function: Retrieve the minecraft server status
-exports.getServerStatus = async () => {
+export const getServerStatus = async () => {
 
     // Default minecraft server status flag
     let minecraftServerUp = false;

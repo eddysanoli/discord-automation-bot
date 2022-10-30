@@ -1,10 +1,23 @@
-// Dependencies
-const DotEnv = require("dotenv").config({path: `${__dirname}/.env`});
-const cron = require("cron");
-const aws = require(__dirname + "/src/awsUtils");
+// Node Modules
+import * as cron from "cron";
+import * as dotenv from "dotenv";
+import { Client, Intents, Guild, GuildBasedChannel } from "discord.js";
 
-// Discord client instance
-const { Client, Intents } = require('discord.js');
+// Custom Scripts
+import { connectDB } from "./src/databaseUtils";
+import * as aws from "./src/awsUtils";
+
+/* ============================================ */
+/* SETUP                                        */
+/* ============================================ */
+
+// Load the .env environment variables 
+dotenv.config({path: `.env`});
+
+// Connect to the database
+connectDB();
+
+// Discord Client
 const client = new Client({ intents: [
     Intents.FLAGS.GUILDS,                   // Access servers
     Intents.FLAGS.GUILD_MESSAGES,           // Send message to servers
@@ -16,9 +29,9 @@ const client = new Client({ intents: [
 // SERVER SELECTORS
 // =================================================================
 
-let devServer
+let devServer: Guild
 let devServer_general
-let nubuSquad
+let nubuSquad: Guild
 let nubuSquad_nubs
 
 // =================================================================
@@ -57,7 +70,6 @@ let cmd_regex = /!.+ (.+)$/gm;
 
 // Event: Logs when bot has successfully logged in
 client.on("ready", function () {
-    console.log(`Logged in as ${client.user.tag}!`);
 
     // SERVER SELECTORS =======================
 
