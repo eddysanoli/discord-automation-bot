@@ -6,6 +6,28 @@ services:
     image: discord-bot:latest
     container_name: discord-bot
     restart: always
+    networks:
+      - discord-bot
+    depends_on:
+      - postgres
     volumes:
       - ./:/usr/src                       # Mount the current directory to workdir of the container
       - /usr/src/node_modules             # Prevent the internal node_modules from being deleted when no "node_modules" folder exists in the root directory 
+  
+  postgres:
+    image: postgres:14.5
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - ./database:/docker-entrypoint-initdb.d
+    networks:
+      - discord-bot
+
+networks:
+  discord-bot: 
+    driver: bridge

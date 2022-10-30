@@ -15,7 +15,7 @@
  * @property {string} name 
  * Name / label that the user assigned to the EC2 instance 
  * 
- * @property {"running" | "stopped" | "terminated"} status
+ * @property {string | "running" | "stopped" | "terminated"} status
  * Status of the EC2 instance. Possible values are: running, stopped
  * and terminated (more are available but I didn't include them)
  * 
@@ -28,7 +28,7 @@
 export type EC2Instance = {
     id: string,
     name: string,
-    status: "running" | "stopped" | "terminated",
+    status: string | "running" | "stopped" | "terminated",
     ipv4: string,
     ipv6: string
 }
